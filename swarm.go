@@ -17,10 +17,10 @@ const (
 	screenmaxX    = 800
 	screenmaxY    = 800
 	neighbourhood = 70.0
-	swarmsize     = 250
+	swarmsize     = 950
 
 	//Adjusts the strength of all the swarming factors together
-	f = 1.3
+	f = 1.2
 
 	//Adjusts ruleDontCrowd
 	personalSpaceSize  = 16.0

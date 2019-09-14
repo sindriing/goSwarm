@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"image"
 	"os"
+	"sync"
+	"time"
 
 	"math/rand"
 
@@ -43,6 +46,17 @@ type boid struct {
 func (b *boid) move() {
 	b.loc = b.loc.Add(b.vel)
 	b.angle = b.vel.Angle()
+}
+
+func (b *boid) AllRules(w *sync.WaitGroup, guys *[]boid) {
+	neighs := b.neighbours(guys)
+	b.ruleGetClose(neighs)
+	b.ruleDontCrowd(neighs)
+	b.ruleMatchVelocity(neighs)
+	b.ruleStayOnScreen()
+	b.ruleSpeedCap()
+	b.move()
+	w.Done()
 }
 
 func (b *boid) ruleStayOnScreen() {
@@ -128,7 +142,7 @@ func run() {
 	cfg := pixelgl.WindowConfig{
 		Title:  "Swarm",
 		Bounds: pixel.R(0, 0, screenmaxX, screenmaxY),
-		VSync:  true,
+		VSync:  true, //can be changed to false to test maximum performance
 	}
 	win, err := pixelgl.NewWindow(cfg)
 	if err != nil {
@@ -136,7 +150,7 @@ func run() {
 	}
 	win.SetSmooth(true)
 
-	arrowIm, err := loadPictures("arrow.png")
+	arrowIm, err := loadPictures("../arrow.png")
 	if err != nil {
 		panic(err)
 	}
@@ -152,33 +166,52 @@ func run() {
 		guys = append(guys, boid{pixel.V(myRand(10), myRand(10)), pixel.V(myRand(800), myRand(800)), 0})
 	}
 
+	// use these to measure FPS
+	var (
+		frames = 0
+		second = time.Tick(time.Second)
+		next   []boid
+	)
+
 	win.Clear(colornames.Aliceblue)
 	for !win.Closed() {
 		batch.Clear()
 
+		next = guys
+		var mutex sync.WaitGroup
 		//Updating boids
 		for i := 0; i < len(guys); i++ {
-			g = &guys[i]
+			g = &next[i]
 
 			//Do swarm behaviour
-			neighs := g.neighbours(&guys)
-			g.ruleGetClose(neighs)
-			g.ruleDontCrowd(neighs)
-			g.ruleMatchVelocity(neighs)
-			g.ruleStayOnScreen()
-			g.ruleSpeedCap()
-			g.move()
+			mutex.Add(1)
+			go g.AllRules(&mutex, &next)
 
+		}
+		mutex.Wait()
+
+		for _, g := range next {
 			mat = pixel.IM.Rotated(pixel.ZV, g.angle).Moved(g.loc)
 			boidSprite.Draw(batch, mat)
 		}
 
+		guys = next
 		win.Clear(colornames.Aliceblue)
 		batch.Draw(win)
 		win.Update()
+
+		// Tracks and displays FPS
+		frames++
+		select {
+		case <-second:
+			win.SetTitle(fmt.Sprintf("%s | FPS: %d", cfg.Title, frames))
+			frames = 0
+		default:
+		}
 	}
 }
 
+//This function is taken from an example in the pixel library
 func loadPictures(path string) (pixel.Picture, error) {
 	file, err := os.Open(path)
 	if err != nil {
